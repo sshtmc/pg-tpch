@@ -1,0 +1,8 @@
+#!/bin/bash
+
+for i in $(seq 1 20);
+do
+  f=q$i.sql
+  echo "Running query $i"
+  psql tpch <$f
+done
