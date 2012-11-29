@@ -13,7 +13,7 @@ create view revenue:s (supplier_no, total_revenue) as
 		l_shipdate >= date ':1'
 		and l_shipdate < date ':1' + interval '3' month
 	group by
-		l_suppkey
+		l_suppkey;
 
 :o
 select
@@ -34,7 +34,7 @@ where
 			revenue:s
 	)
 order by
-	s_suppkey
+	s_suppkey;
 
-drop view revenue:s
+drop view revenue:s;
 
