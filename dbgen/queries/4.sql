@@ -24,5 +24,5 @@ where
 group by
 	o_orderpriority
 order by
-	o_orderpriority;
-:n -1
+	o_orderpriority
+

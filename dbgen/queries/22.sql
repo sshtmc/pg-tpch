@@ -40,5 +40,5 @@ from
 group by
 	cntrycode
 order by
-	cntrycode;
-:n -1
+	cntrycode
+

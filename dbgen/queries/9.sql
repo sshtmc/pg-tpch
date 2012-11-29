@@ -35,5 +35,5 @@ group by
 	o_year
 order by
 	nation,
-	o_year desc;
-:n -1
+	o_year desc
+

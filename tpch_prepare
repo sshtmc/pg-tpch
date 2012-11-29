@@ -1,38 +1,46 @@
 #!/bin/bash
 
-BASEDIR=$HOME/projects/pg-tpch
+BASEDIR=$HOME/projects/pg-tpch/dbgen
 REMAKE_DATA=false
 POPULATE_DB=false
 DB_NAME="tpch"
+TPCHTMP=/dev/shm/$USER/tpch_tmp
+mkdir -p $TPCHTMP
 
-cd $BASEDIR/dbgen
+cd $BASEDIR
 if ! [ -x dbgen ] || ! [ -x qgen ];
 then
   make -j5
 fi
-$REMAKE_DATA && rm -rf tmp
-$REMAKE_DATA && mkdir tmp
-cd tmp
-$REMAKE_DATA && cp ../dists.dss .
-# ../dbgen -s 10 # to generate a DB of 10GB
-$REMAKE_DATA && ../dbgen
-$REMAKE_DATA && for f in *.tbl; do sed -i 's/|$//' $f; done
 
+if $REMAKE_DATA
+then
+  cd $TPCHTMP
+  cp $BASEDIR/dists.dss .
+  # dbgen -s 10 # to generate a DB of 10GB
+  $BASEDIR/dbgen
+  for f in *.tbl; do
+    sed -i 's/|$//' $f &
+  done
+  for p in $(jobs); do wait $p; done
+fi
 
-if $POPULATE_DB;
+if $POPULATE_DB
 then
   echo "DROP DATABASE $DB_NAME" | psql
   createdb $DB_NAME
-  psql $DB_NAME < ../dss.ddl
+  psql $DB_NAME < $BASEDIR/dss.ddl
+  cd $TPCHTMP
   for f in *.tbl; do
     bf="$(basename $f .tbl)"
-    echo "COPY $bf FROM '$(pwd)/$f' WITH DELIMITER AS '|'" | psql $DB_NAME
+    echo "COPY $bf FROM '$(pwd)/$f' WITH DELIMITER AS '|'" | psql $DB_NAME &
   done
+  for p in $(jobs); do wait $p; done
 fi
 
-cd $BASEDIR/dbgen
+cd $BASEDIR
 for i in $(seq 1 20);
 do
-  DSS_QUERY=queries ./qgen $i >$BASEDIR/q$i.sql
+  DSS_QUERY=queries ./qgen $i >../q$i.sql
 done
 

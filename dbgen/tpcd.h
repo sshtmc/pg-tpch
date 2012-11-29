@@ -77,12 +77,12 @@
 #endif
 
 #ifdef ORACLE
-#define GEN_QUERY_PLAN ""
-#define START_TRAN ""
-#define END_TRAN ""
+#define GEN_QUERY_PLAN "EXPLAIN"
+#define START_TRAN "START"
+#define END_TRAN "COMMIT;"
 #define SET_OUTPUT ""
-#define SET_ROWCOUNT "where rownum <= %d;\n"
-#define SET_DBASE ""
+#define SET_ROWCOUNT "LIMIT %d;\n"
+#define SET_DBASE "\\c %s ;\n"
 #endif
 
 #ifdef 	SQLSERVER
