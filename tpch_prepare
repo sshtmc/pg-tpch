@@ -1,7 +1,7 @@
 #!/bin/bash
 
 BASEDIR=$HOME/projects/pg-tpch/dbgen
-TPCHTMP=$HOME/tmp
+TPCHTMP=$HOME/tmp_tpch
 PGDATADIR=/dev/shm/$USER/pgdata # currently unused
 REMAKE_DATA=true
 POPULATE_DB=true
@@ -22,9 +22,6 @@ then
   cp $BASEDIR/dists.dss .
   # dbgen -s 10 # to generate a DB of 10GB
   $BASEDIR/dbgen
-  for f in *.tbl; do
-    sed -i 's/|$//' $f &
-  done
   for p in $(jobs -p); do wait $p; done
 fi
 
