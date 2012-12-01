@@ -1,8 +1,51 @@
 #!/bin/bash
 
+PGDATADIR=/dev/shm/$USER/pgdata
+PGPORT=5432
+
+BASEDIR=$(dirname $0)
+cd $BASEDIR
+#pkill 'postgres|postmaster'
+#sleep 2
+
+PORTLIST="$(lsof -i tcp:$PGPORT | tail -n +2 | awk '{print $2}')"
+if [[ $(echo "$PORTLIST" | wc -l) -gt 0 ]];
+then
+  echo "The following processes have taken port $PGPORT"
+  echo "Please terminate them before running this script"
+  echo
+  echo $PORTLIST | xargs ps -o pid,cmd
+  exit -1
+fi
+
+exit 0;
+
 for i in $(seq 1 20);
 do
-  f=q$i.sql
-  echo "Running query $i"
+ # echo "Starting the postgres server"
+  perf record -g postgres -D $PGDATADIR &
+  PGPID=$!
+  sleep 2
+  f="q$i.sql"
+  cgf="callgraph-q$i.png"
+  echo "Running query: $i"
   psql tpch <$f
+  pkill 'postgres|postmaster'
+  sleep 2
+  echo "Creating the call graph: $cgf"
+  perf script | python ./gprof2dot.py -f perf | dot -Tpng -o $cgf || exit -1
+  echo "Call graph created"
 done
+
+#for i in $(seq 1 20);
+#do
+#  f=q$i.sql
+#  echo "Running query $i"
+#  psql tpch <$f
+#done
+
+for p in $(jobs -p);
+do
+  wait $p
+done
+
