@@ -1,12 +1,13 @@
 #!/bin/bash
 
 BASEDIR=$HOME/projects/pg-tpch/dbgen
-REMAKE_DATA=false
-POPULATE_DB=false
+TPCHTMP=$HOME/tmp
+PGDATADIR=/dev/shm/$USER/pgdata # currently unused
+REMAKE_DATA=true
+POPULATE_DB=true
 CREATE_ALL_INDEXES=false
 CREATE_MIN_INDEXES=true
 DB_NAME="tpch"
-TPCHTMP=/dev/shm/$USER/tpch_tmp
 mkdir -p $TPCHTMP
 
 cd $BASEDIR
@@ -29,7 +30,7 @@ fi
 
 if $POPULATE_DB
 then
-  echo "DROP DATABASE $DB_NAME" | psql
+  echo "DROP DATABASE IF EXISTS $DB_NAME" | psql
   createdb $DB_NAME
   psql $DB_NAME < $BASEDIR/dss.ddl
   cd $TPCHTMP
