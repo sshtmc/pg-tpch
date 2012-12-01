@@ -3,7 +3,7 @@
 PGDATADIR=/dev/shm/$USER/pgdata
 PGPORT=5432
 
-BASEDIR=$(dirname $0)
+BASEDIR=$(cd "$(dirname $0)"; pwd)
 cd $BASEDIR
 #pkill 'postgres|postmaster'
 #sleep 2
@@ -28,14 +28,18 @@ do
   PGPID=$!
   sleep 2
   f="q$i.sql"
-  cgf="callgraph-q$i.pdf"
+  cgf="../callgraph-q$i.pdf"
   echo "Running query: $i"
   psql tpch <$f
   pkill 'postgres|postmaster'
   sleep 2
+  dir="perf-q$i"
+  mkdir -p $dir
+  mv perf.data $dir/
+  cd $dir
   echo "Creating the call graph: $cgf"
-  perf script | python ./gprof2dot.py -f perf | dot -Tpdf -o $cgf || exit -1
-  echo "Call graph created"
+  perf script | python $BASEDIR/gprof2dot.py -f perf | dot -Tpdf -o $cgf &
+  cd -
 done
 
 for p in $(jobs -p);
