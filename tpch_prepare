@@ -3,10 +3,10 @@
 BASEDIR=$HOME/projects/pg-tpch/dbgen
 TPCHTMP=$HOME/tmp_tpch
 PGDATADIR=/dev/shm/$USER/pgdata # currently unused
-REMAKE_DATA=true
-POPULATE_DB=true
+REMAKE_DATA=false
+POPULATE_DB=false
 CREATE_ALL_INDEXES=false
-CREATE_MIN_INDEXES=true
+CREATE_MIN_INDEXES=false
 DB_NAME="tpch"
 mkdir -p $TPCHTMP
 
@@ -75,7 +75,7 @@ __EOD
 fi
 
 cd $BASEDIR
-for i in $(seq 1 20);
+for i in $(seq 1 22);
 do
   DSS_QUERY=queries ./qgen $i >../q$i.sql
 done
