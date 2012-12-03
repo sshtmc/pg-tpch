@@ -1,47 +1,116 @@
 #!/bin/bash
-
-BASEDIR=$HOME/projects/pg-tpch/dbgen
-TPCHTMP=$HOME/tmp_tpch
+# This script has numerous Bashisms, and is assumed to be runing on a recent
+# Linux system (certainly, Kernel 2.6+).  Assume script is being run from root
+# pg-tpch directory Further, assume that we're generally interested in
+# re-initializing data; it may be useful to turn off REMAKE_DATA for repeated
+# runs.
+BASEDIR=`pwd`/dbgen
+TPCHTMP=/dev/shm/$USER/tpch_tmp
 PGDATADIR=/dev/shm/$USER/pgdata # currently unused
-REMAKE_DATA=false
-POPULATE_DB=false
-CREATE_ALL_INDEXES=false
-CREATE_MIN_INDEXES=false
+REMAKE_DATA=true
 DB_NAME="tpch"
+POPULATE_DB=true
+CREATE_MIN_INDEXES=true
+CREATE_ALL_INDEXES=false
+# Scale factor. 1 = 1GB, 10 = 10GB. TPC-H has rules about which scale factors
+# are considered valid for comparative purposes.
+CORES=`grep -c ^processor /proc/cpuinfo`
+SCALE=1
+WAL_LEVEL_MINIMAL=`psql -c 'show wal_level' -t | grep minimal | wc -l`
+DEBUG_ASSERTIONS=`psql -c 'show debug_assertions' -t | grep on | wc -l`
+
+function timer()
+{
+    if [[ $# -eq 0 ]]; then
+        echo $(date '+%s')
+    else
+        local  stime=$1
+        etime=$(date '+%s')
+
+        if [[ -z "$stime" ]]; then stime=$etime; fi
+
+        dt=$((etime - stime))
+        ds=$((dt % 60))
+        dm=$(((dt / 60) % 60))
+        dh=$((dt / 3600))
+        printf '%d:%02d:%02d' $dh $dm $ds
+    fi
+}
+
+t=$(timer)
+
+# Remind me of my current settings
+psql -c "select name, current_setting(name) from pg_settings where name
+in('debug_assertions', 'wal_level', 'checkpoint_segments', 'shared_buffers', 'wal_buffers',
+'fsync', 'maintenance_work_mem', 'checkpoint_completion_target',
+'max_connections');"
+
+if [ $WAL_LEVEL_MINIMAL != 1 ] ;
+then
+	echo "Warning: Postgres wal_level is not set to minimal; 'Elide WAL traffic' optimization cannot be used">&2
+fi
+
+if [ $DEBUG_ASSERTIONS = 1 ] ;
+then
+	echo "Error: debug_assertions are enabled">&2
+	exit -1
+fi
+
 mkdir -p $TPCHTMP
 
 cd $BASEDIR
 if ! [ -x dbgen ] || ! [ -x qgen ];
 then
-  make -j5
+  make -j $CORES
 fi
 
 if $REMAKE_DATA
 then
   cd $TPCHTMP
   cp $BASEDIR/dists.dss .
-  # dbgen -s 10 # to generate a DB of 10GB
-  $BASEDIR/dbgen
+  # Run dbgen with "force", to overwrite existing files
+  $BASEDIR/dbgen -s $SCALE -f -v
+  for f in `ls *.tbl`; do
+    sed -i 's/|$//' $f &
+  done
   for p in $(jobs -p); do wait $p; done
 fi
 
 if $POPULATE_DB
 then
   echo "DROP DATABASE IF EXISTS $DB_NAME" | psql
-  createdb $DB_NAME
-  psql $DB_NAME < $BASEDIR/dss.ddl
+  # Make sure we're all on the same page wrt encoding, collations, etc.
+  createdb $DB_NAME --encoding=UTF-8 --lc-ctype=en_US.UTF-8 --lc-collate=en_US.UTF-8
+  if [ $? != 0 ]; then
+    # Did you forget to disconnect from the database before dropping?
+	echo "Error: Can't proceed without database"
+	exit -1
+  fi
+  TIME=`date`
+  psql -d $DB_NAME -c "comment on database $DB_NAME is 'TPC-H data, created at $TIME'"
+  psql -d $DB_NAME < $BASEDIR/dss.ddl
   cd $TPCHTMP
-  for f in *.tbl; do
-    bf="$(basename $f .tbl)"
-    echo "COPY $bf FROM '$(pwd)/$f' WITH DELIMITER AS '|'" | psql $DB_NAME &
+  for f in `ls *.tbl`; do
+	bf="$(basename $f .tbl)"
+	# We truncate the empty table in the sames transaction to enable Postgres to
+	# safely skip WAL-logging. See
+	# http://www.postgresql.org/docs/current/static/populate.html#POPULATE-PITR
+    echo "truncate $bf; COPY $bf FROM '$(pwd)/$f' WITH DELIMITER AS '|'" | psql -d $DB_NAME &
   done
+  # TODO: It would be nice if there was a way to limit the number of
+  # concurrently executing jobs to $CORES. It is surprisingly easy to make COPY
+  # CPU-bound.
   for p in $(jobs -p); do wait $p; done
 fi
 
+rm -rf $TPCHTMP/*
+
+# Since wal_level is hopefully set to 'minimal', it ought to be possible to skip
+# WAL logging these create index operations, too.
 if $CREATE_ALL_INDEXES
 then
-cat | psql $DB_NAME <<__EOD
-CREATE INDEX i_l_shipdate ON lineitem (l_shipdate);
+echo "Creating 'All' indexes..."
+psql -d $DB_NAME -c "CREATE INDEX i_l_shipdate ON lineitem (l_shipdate);
 CREATE INDEX i_l_suppkey_partkey ON lineitem (l_partkey, l_suppkey);
 CREATE INDEX i_l_partkey ON lineitem (l_partkey);
 CREATE INDEX i_l_suppkey ON lineitem (l_suppkey);
@@ -55,14 +124,12 @@ CREATE INDEX i_s_nationkey ON supplier (s_nationkey);
 CREATE INDEX i_ps_partkey ON partsupp (ps_partkey);
 CREATE INDEX i_ps_suppkey ON partsupp (ps_suppkey);
 CREATE INDEX i_n_regionkey ON nation (n_regionkey);
-CREATE INDEX i_l_commitdate ON lineitem (l_commitdate);
-__EOD
+CREATE INDEX i_l_commitdate ON lineitem (l_commitdate);"
 fi
-
 if $CREATE_MIN_INDEXES
 then
-  cat | psql $DB_NAME <<__EOD
-CREATE INDEX n_nationkey_idx on nation (n_nationkey);
+echo "Creating 'Min' indexes..."
+psql -d $DB_NAME -c "CREATE INDEX n_nationkey_idx on nation (n_nationkey);
 CREATE INDEX r_regionkey_idx on region (r_regionkey);
 CREATE INDEX p_partkey_idx on part (p_partkey);
 CREATE INDEX s_suppkey_idx on supplier (s_suppkey);
@@ -70,9 +137,17 @@ CREATE INDEX ps_partkey_idx on partsupp (ps_partkey);
 CREATE INDEX c_custkey_idx on customer (c_custkey);
 CREATE INDEX o_orderkey_idx on orders (o_orderkey);
 CREATE INDEX l_orderkey_idx on lineitem (l_orderkey);
-CREATE INDEX l_partkey_idx on lineitem (l_partkey);
-__EOD
+CREATE INDEX l_partkey_idx on lineitem (l_partkey);"
 fi
+
+# Always analyze after bulk-loading; when hacking Postgres, typically Postgres
+# is run with autovacuum turned off.
+echo "Running analyze..."
+psql -d $DB_NAME -c "analyze"
+# Checkpoint, so we have a "clean slate". Just in-case.
+echo "Checkpointing..."
+psql -d $DB_NAME -c "checkpoint"
+
 
 cd $BASEDIR
 for i in $(seq 1 22);
@@ -80,3 +155,4 @@ do
   DSS_QUERY=queries ./qgen $i >../q$i.sql
 done
 
+printf 'Elapsed time: %s\n' $(timer $t)
