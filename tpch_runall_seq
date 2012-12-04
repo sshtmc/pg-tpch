@@ -33,13 +33,13 @@ do
   psql tpch <$f
   pkill 'postgres|postmaster'
   sleep 2
-  dir="perf-q$i"
+  dir="perfdata-q$i"
   mkdir -p $dir
   mv perf.data $dir/
   cd $dir
   echo "Creating the call graph: $cgf"
   perf script | python $BASEDIR/gprof2dot.py -f perf | dot -Tpdf -o $cgf &
-  cd -
+  cd - >/dev/null
 done
 
 for p in $(jobs -p);
