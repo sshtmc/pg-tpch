@@ -7,9 +7,13 @@ on Ubuntu 12.04.
 You might have to change some steps for other versions of Linux, or for other
 versions of PostgreSQL.
 
-Install all dependencies of PostgreSQL
+Install all dependencies of Postgres
 ```bash
 sudo apt-get build-dep postgresql
+```
+
+Download, build, and install a custom version of Postgres
+```bash
 wget http://ftp.postgresql.org/pub/source/v9.2.1/postgresql-9.2.1.tar.bz2
 tar xf postgresql-9.2.1.tar.bz2
 cd postgresql-9.2.1/
@@ -18,7 +22,7 @@ make -j$(grep -c ^processor /proc/cpuinfo)
 make install
 ```
 
-Add PostgreSQL to the path. I assume you are using bash (the default)
+Add Postgres to the path. I assume you are using bash (the default)
 ```bash
 echo -e "\nexport PATH=\$HOME/pg92/bin:\$PATH" >>~/.bashrc
 ```
