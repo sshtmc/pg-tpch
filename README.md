@@ -38,7 +38,7 @@ version=${full_version%-$flavour}
 sudo apt-get install linux-tools-common linux-tools-${version}
 ```
 
-You can now prepare the database and the TPC-H tables:
+You are now ready to create and populate the TPC-H database and the tables:
 ```bash
 ./tpch_prepare
 ```

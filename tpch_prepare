@@ -1,12 +1,14 @@
 #!/bin/bash
 # This script has numerous Bashisms, and is assumed to be runing on a recent
-# Linux system (certainly, Kernel 2.6+).  Assume script is being run from root
-# pg-tpch directory Further, assume that we're generally interested in
-# re-initializing data; it may be useful to turn off REMAKE_DATA for repeated
-# runs.
+# Linux system (certainly, Kernel 2.6+).
+# Assume that we're generally interested in re-initializing data;
+# it may be useful to turn off REMAKE_DATA for repeated runs.
+#
+# Configuration variables
 BASEDIR=`pwd`/dbgen
 TPCHTMP=/dev/shm/$USER/tpch_tmp
-PGDATADIR=/dev/shm/$USER/pgdata # currently unused
+PGDATADIR=/dev/shm/$USER/pgdata
+PGPORT=5442
 REMAKE_DATA=true
 DB_NAME="tpch"
 POPULATE_DB=true
@@ -14,11 +16,41 @@ CREATE_MIN_INDEXES=true
 CREATE_ALL_INDEXES=false
 # Scale factor. 1 = 1GB, 10 = 10GB. TPC-H has rules about which scale factors
 # are considered valid for comparative purposes.
-CORES=`grep -c ^processor /proc/cpuinfo`
 SCALE=1
-WAL_LEVEL_MINIMAL=`psql -c 'show wal_level' -t | grep minimal | wc -l`
-DEBUG_ASSERTIONS=`psql -c 'show debug_assertions' -t | grep on | wc -l`
-# disable resolving of *.tbl to '*.tbl' when there are no matching files
+
+
+#
+# The actual code; you shouldn't have to modify anything from this point on
+#
+CORES=`grep -c ^processor /proc/cpuinfo`
+
+#
+# Check for the running Postgres; exit if there is any on the given port
+#
+PORTLIST="$(lsof -i tcp:$PGPORT | tail -n +2 | awk '{print $2}')"
+if [[ $(echo "$PORTLIST" | wc -w) -gt 0 ]];
+then
+  echo "The following processes have taken port $PGPORT"
+  echo "Please terminate them before running this script"
+  echo
+  for p in $PORTLIST;
+  do
+    ps -o pid,cmd
+  done
+  exit -1
+fi
+
+#
+# Start a new instance of Postgres
+#
+postgres -D $PGDATADIR -p $PGPORT &
+PGPID=$!
+sleep 2 # to allow Postgres to initialize properly
+
+WAL_LEVEL_MINIMAL=`psql -p $PGPORT -c 'show wal_level' -t | grep minimal | wc -l`
+DEBUG_ASSERTIONS=`psql -p $PGPORT -c 'show debug_assertions' -t | grep on | wc -l`
+
+# disable resolving of *.tbl to '*.tbl' in case there are no matching files
 shopt -s nullglob
 
 function timer()
@@ -41,8 +73,14 @@ function timer()
 
 t=$(timer)
 
+function die()
+{
+  echo "$@"
+  exit -1;
+}
+
 # Remind me of my current settings
-psql -c "select name, current_setting(name) from pg_settings where name
+psql -p $PGPORT -c "select name, current_setting(name) from pg_settings where name
 in('debug_assertions', 'wal_level', 'checkpoint_segments', 'shared_buffers', 'wal_buffers',
 'fsync', 'maintenance_work_mem', 'checkpoint_completion_target',
 'max_connections');"
@@ -58,13 +96,13 @@ then
 	exit -1
 fi
 
-mkdir -p $TPCHTMP
-
 cd $BASEDIR
 if ! [ -x dbgen ] || ! [ -x qgen ];
 then
   make -j $CORES
 fi
+
+mkdir -p $TPCHTMP || die "Failed to create temporary directory: $TPCHTMP"
 
 if $REMAKE_DATA
 then
@@ -72,47 +110,47 @@ then
   cp $BASEDIR/dists.dss .
   # Run dbgen with "force", to overwrite existing files
   $BASEDIR/dbgen -s $SCALE -f -v
-  for f in *.tbl; do
-    sed -i 's/|$//' $f &
-  done
-  for p in $(jobs -p); do wait $p; done
 fi
 
 if $POPULATE_DB
 then
-  echo "DROP DATABASE IF EXISTS $DB_NAME" | psql
+  echo "DROP DATABASE IF EXISTS $DB_NAME" | psql -p $PGPORT
   # Make sure we're all on the same page wrt encoding, collations, etc.
-  createdb $DB_NAME --encoding=UTF-8 --lc-ctype=en_US.UTF-8 --lc-collate=en_US.UTF-8
+  createdb -p $PGPORT $DB_NAME --encoding=UTF-8 --lc-ctype=en_US.UTF-8 --lc-collate=en_US.UTF-8
   if [ $? != 0 ]; then
     # Did you forget to disconnect from the database before dropping?
 	echo "Error: Can't proceed without database"
 	exit -1
   fi
   TIME=`date`
-  psql -d $DB_NAME -c "comment on database $DB_NAME is 'TPC-H data, created at $TIME'"
-  psql -d $DB_NAME < $BASEDIR/dss.ddl
+  psql -p $PGPORT -d $DB_NAME -c "comment on database $DB_NAME is 'TPC-H data, created at $TIME'"
+  psql -p $PGPORT -d $DB_NAME < $BASEDIR/dss.ddl
   cd $TPCHTMP
   for f in *.tbl; do
 	bf="$(basename $f .tbl)"
 	# We truncate the empty table in the sames transaction to enable Postgres to
 	# safely skip WAL-logging. See
 	# http://www.postgresql.org/docs/current/static/populate.html#POPULATE-PITR
-    echo "truncate $bf; COPY $bf FROM '$(pwd)/$f' WITH DELIMITER AS '|'" | psql -d $DB_NAME &
+    echo "truncate $bf; COPY $bf FROM '$(pwd)/$f' WITH DELIMITER AS '|'" | psql -p $PGPORT -d $DB_NAME &
   done
   # TODO: It would be nice if there was a way to limit the number of
   # concurrently executing jobs to $CORES. It is surprisingly easy to make COPY
   # CPU-bound.
-  for p in $(jobs -p); do wait $p; done
+  for p in $(jobs -p); do
+    if [ $p == $PGPID ]; then continue; fi
+    wait $p;
+  done
 fi
 
-rm -rf $TPCHTMP/*
+cd $BASEDIR
+rm -rf $TPCHTMP
 
 # Since wal_level is hopefully set to 'minimal', it ought to be possible to skip
 # WAL logging these create index operations, too.
 if $CREATE_ALL_INDEXES
 then
 echo "Creating 'All' indexes..."
-psql -d $DB_NAME -c "CREATE INDEX i_l_shipdate ON lineitem (l_shipdate);
+psql -p $PGPORT -d $DB_NAME -c "CREATE INDEX i_l_shipdate ON lineitem (l_shipdate);
 CREATE INDEX i_l_suppkey_partkey ON lineitem (l_partkey, l_suppkey);
 CREATE INDEX i_l_partkey ON lineitem (l_partkey);
 CREATE INDEX i_l_suppkey ON lineitem (l_suppkey);
@@ -131,7 +169,7 @@ fi
 if $CREATE_MIN_INDEXES
 then
 echo "Creating 'Min' indexes..."
-psql -d $DB_NAME -c "CREATE INDEX n_nationkey_idx on nation (n_nationkey);
+psql -p $PGPORT -d $DB_NAME -c "CREATE INDEX n_nationkey_idx on nation (n_nationkey);
 CREATE INDEX r_regionkey_idx on region (r_regionkey);
 CREATE INDEX p_partkey_idx on part (p_partkey);
 CREATE INDEX s_suppkey_idx on supplier (s_suppkey);
@@ -145,16 +183,20 @@ fi
 # Always analyze after bulk-loading; when hacking Postgres, typically Postgres
 # is run with autovacuum turned off.
 echo "Running analyze..."
-psql -d $DB_NAME -c "analyze"
+psql -p $PGPORT -d $DB_NAME -c "analyze"
 # Checkpoint, so we have a "clean slate". Just in-case.
 echo "Checkpointing..."
-psql -d $DB_NAME -c "checkpoint"
+psql -p $PGPORT -d $DB_NAME -c "checkpoint"
 
 
 cd $BASEDIR
 for i in $(seq 1 22);
 do
-  DSS_QUERY=queries ./qgen $i >../q$i.sql
+  ii=$(printf "%02d" $i)
+  DSS_QUERY=queries ./qgen $i >../q$ii.sql
 done
 
 printf 'Elapsed time: %s\n' $(timer $t)
+
+pg_ctl stop -D $PGDATADIR
+

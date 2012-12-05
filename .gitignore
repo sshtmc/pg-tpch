@@ -2,7 +2,5 @@ dbgen/*.o
 q*.sql
 dbgen/dbgen
 dbgen/qgen
-perfdata-q*/
-perf.data
-perf.data.old
+perfdata/
 

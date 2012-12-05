@@ -1,12 +1,10 @@
 #!/bin/bash
 
 PGDATADIR=/dev/shm/$USER/pgdata
-PGPORT=5432
+PGPORT=5442
 
 BASEDIR=$(cd "$(dirname $0)"; pwd)
 cd $BASEDIR
-#pkill 'postgres|postmaster'
-#sleep 2
 
 PORTLIST="$(lsof -i tcp:$PGPORT | tail -n +2 | awk '{print $2}')"
 if [[ $(echo "$PORTLIST" | wc -w) -gt 0 ]];
@@ -23,17 +21,18 @@ fi
 
 for i in $(seq 1 22);
 do
- # echo "Starting the postgres server"
-  perf record -g postgres -D $PGDATADIR &
+  ii=$(printf "%02d" $i)
+  # echo "Starting the postgres server"
+  perf record -g postgres -D $PGDATADIR -p $PGPORT &
   PGPID=$!
   sleep 2
-  f="q$i.sql"
-  cgf="../callgraph-q$i.pdf"
+  f="q$ii.sql"
+  cgf="../q${ii}-callgraph.pdf"
   echo "Running query: $i"
-  psql tpch <$f
-  pkill 'postgres|postmaster'
+  psql -p $PGPORT tpch <$f
+  pg_ctl stop -D $PGDATADIR
   sleep 2
-  dir="perfdata-q$i"
+  dir="perfdata/q${ii}"
   mkdir -p $dir
   mv perf.data $dir/
   cd $dir
