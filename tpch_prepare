@@ -70,7 +70,7 @@ then
   cp $BASEDIR/dists.dss .
   # Run dbgen with "force", to overwrite existing files
   $BASEDIR/dbgen -s $SCALE -f -v
-  for f in `ls *.tbl`; do
+  for f in *.tbl; do
     sed -i 's/|$//' $f &
   done
   for p in $(jobs -p); do wait $p; done
@@ -90,7 +90,7 @@ then
   psql -d $DB_NAME -c "comment on database $DB_NAME is 'TPC-H data, created at $TIME'"
   psql -d $DB_NAME < $BASEDIR/dss.ddl
   cd $TPCHTMP
-  for f in `ls *.tbl`; do
+  for f in *.tbl; do
 	bf="$(basename $f .tbl)"
 	# We truncate the empty table in the sames transaction to enable Postgres to
 	# safely skip WAL-logging. See
