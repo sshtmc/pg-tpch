@@ -18,6 +18,8 @@ CORES=`grep -c ^processor /proc/cpuinfo`
 SCALE=1
 WAL_LEVEL_MINIMAL=`psql -c 'show wal_level' -t | grep minimal | wc -l`
 DEBUG_ASSERTIONS=`psql -c 'show debug_assertions' -t | grep on | wc -l`
+# disable resolving of *.tbl to '*.tbl' when there are no matching files
+shopt -s nullglob
 
 function timer()
 {
