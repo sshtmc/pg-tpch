@@ -51,4 +51,13 @@ And after it finishes, run the queries and generate the call graphs:
 ```bash
 ./tpch_runall_seq
 ```
+This will create a directory perfdata, and put all the evaluation results in
+there.
+
+You may also use a custom directory for the performance results, by giving an
+argument to the tpch_runall_seq:
+```bash
+./tpch_runall_seq my-config
+```
+This will create a directory perfdata-my-config and put the results in it.
 
