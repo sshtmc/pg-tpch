@@ -1,6 +1,6 @@
 dbgen/*.o
-q*.sql
 dbgen/dbgen
 dbgen/qgen
-perfdata/
+queries/
+perfdata*/
 

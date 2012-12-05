@@ -1,41 +1,56 @@
 #!/bin/bash
 
+PERFDATADIR=perfdata
+if [ $# -gt 0 ]; then
+  PERFDATADIR="$PERFDATADIR-$1"
+fi
 PGDATADIR=/dev/shm/$USER/pgdata
 PGPORT=5442
 
 BASEDIR=$(cd "$(dirname $0)"; pwd)
 cd $BASEDIR
 
-PORTLIST="$(lsof -i tcp:$PGPORT | tail -n +2 | awk '{print $2}')"
-if [[ $(echo "$PORTLIST" | wc -w) -gt 0 ]];
+PGPORT_PROCLIST="$(lsof -i tcp:$PGPORT | tail -n +2 | awk '{print $2}')"
+if [[ $(echo "$PGPORT_PROCLIST" | wc -w) -gt 0 ]];
 then
   echo "The following processes have taken port $PGPORT"
   echo "Please terminate them before running this script"
   echo
-  for p in $PORTLIST;
+  for p in $PGPORT_PROCLIST;
   do
-    ps -o pid,cmd
+    ps -o pid,cmd $p
   done
   exit -1
+fi
+
+#
+# Check if a Postgres server is running in the same directory
+#
+if pg_ctl status -D $PGDATADIR | grep "server is running" -q; then
+  echo "A Postgres server is already running in the selected directory. Exiting."
+  pg_ctl status -D $PGDATADIR
+  exit -2
 fi
 
 for i in $(seq 1 22);
 do
   ii=$(printf "%02d" $i)
-  # echo "Starting the postgres server"
+  dir="$PERFDATADIR/q${ii}"
+  mkdir -p $dir
+  cd $dir
   perf record -g postgres -D $PGDATADIR -p $PGPORT &
   PGPID=$!
-  sleep 2
-  f="q$ii.sql"
-  cgf="../q${ii}-callgraph.pdf"
+  while ! pg_ctl status -D $PGDATADIR | grep "server is running" -q; do
+    echo "Waiting for the Postgres server to start"
+    sleep 1
+  done
+  f="queries/q$ii.sql"
   echo "Running query: $i"
-  psql -p $PGPORT tpch <$f
+  /usr/bin/time -f '%e\n%Uuser %Ssystem %Eelapsed %PCPU (%Xtext+%Ddata %Mmax)k'\
+    -o query_exec_seconds.txt \
+    psql -p $PGPORT tpch <$BASEDIR/$f
   pg_ctl stop -D $PGDATADIR
-  sleep 2
-  dir="perfdata/q${ii}"
-  mkdir -p $dir
-  mv perf.data $dir/
-  cd $dir
+  cgf="../q${ii}-callgraph.pdf"
   echo "Creating the call graph: $cgf"
   perf script | python $BASEDIR/gprof2dot.py -f perf | dot -Tpdf -o $cgf &
   cd - >/dev/null

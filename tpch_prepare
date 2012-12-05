@@ -12,8 +12,8 @@ PGPORT=5442
 REMAKE_DATA=true
 DB_NAME="tpch"
 POPULATE_DB=true
-CREATE_MIN_INDEXES=true
-CREATE_ALL_INDEXES=false
+CREATE_MIN_INDEXES=false
+CREATE_ALL_INDEXES=true
 # Scale factor. 1 = 1GB, 10 = 10GB. TPC-H has rules about which scale factors
 # are considered valid for comparative purposes.
 SCALE=1
@@ -27,25 +27,45 @@ CORES=`grep -c ^processor /proc/cpuinfo`
 #
 # Check for the running Postgres; exit if there is any on the given port
 #
-PORTLIST="$(lsof -i tcp:$PGPORT | tail -n +2 | awk '{print $2}')"
-if [[ $(echo "$PORTLIST" | wc -w) -gt 0 ]];
+PGPORT_PROCLIST="$(lsof -i tcp:$PGPORT | tail -n +2 | awk '{print $2}')"
+if [[ $(echo "$PGPORT_PROCLIST" | wc -w) -gt 0 ]];
 then
   echo "The following processes have taken port $PGPORT"
   echo "Please terminate them before running this script"
   echo
-  for p in $PORTLIST;
+  for p in $PGPORT_PROCLIST;
   do
-    ps -o pid,cmd
+    ps -o pid,cmd $p
   done
   exit -1
 fi
 
 #
+# Check if a Postgres server is running in the same directory
+#
+if pg_ctl status -D $PGDATADIR | grep "server is running" -q; then
+  echo "A Postgres server is already running in the selected directory. Exiting."
+  pg_ctl status -D $PGDATADIR
+  exit -2
+fi
+
+#
+# Initialize DB if $PGDATADIR does not exist
+#
+if ! [ -d "$PGDATADIR" ]; then
+  mkdir -p "$PGDATADIR"
+  initdb -D "$PGDATADIR"
+fi
+
+#
 # Start a new instance of Postgres
 #
-postgres -D $PGDATADIR -p $PGPORT &
+postgres -D "$PGDATADIR" -p $PGPORT &
 PGPID=$!
-sleep 2 # to allow Postgres to initialize properly
+while ! pg_ctl status -D $PGDATADIR | grep "server is running" -q; do
+  echo "Waiting for the Postgres server to start"
+  sleep 1
+done
 
 WAL_LEVEL_MINIMAL=`psql -p $PGPORT -c 'show wal_level' -t | grep minimal | wc -l`
 DEBUG_ASSERTIONS=`psql -p $PGPORT -c 'show debug_assertions' -t | grep on | wc -l`
@@ -193,10 +213,11 @@ cd $BASEDIR
 for i in $(seq 1 22);
 do
   ii=$(printf "%02d" $i)
-  DSS_QUERY=queries ./qgen $i >../q$ii.sql
+  mkdir -p "../queries"
+  DSS_QUERY=queries ./qgen $i >../queries/q$ii.sql
 done
 
 printf 'Elapsed time: %s\n' $(timer $t)
 
-pg_ctl stop -D $PGDATADIR
+pg_ctl stop -D "$PGDATADIR"
 
