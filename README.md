@@ -29,18 +29,13 @@ your session
 export PATH=$HOME/pg92/bin:$PATH
 ```
 
-To run the 'perf' profiler
+To install the 'perf' profiler and the dependencies
 ```bash
-sudo apt-get install linux-tools-common
-
 full_version=$(uname -r)
-
-# Removing flavour from version i.e. generic or server.
 flavour_abi=${full_version#*-}
 flavour=${flavour_abi#*-}
 version=${full_version%-$flavour}
-
-echo sudo apt-get install linux-tools-${version}
+sudo apt-get install linux-tools-common linux-tools-${version}
 ```
 
 You can now prepare the database and the TPC-H tables:
