@@ -46,6 +46,21 @@ version=${full_version%-$flavour}
 sudo apt-get install linux-tools-common linux-tools-${version}
 ```
 
+For better Postgres performance, you should also consider increasing the default
+limits for allocating memory (this increases the limits to 2GB):
+```bash
+sudo sysctl -w kernel.shmmax=2147483648
+sudo sysctl -w kernel.shmall=2097152
+```
+
+To make these changes permanent, execute the following:
+```bash
+cat <<__EOF | sudo tee -a /etc/sysctl.conf
+kernel.shmmax=2147483648
+kernel.shmall=2097152
+__EOF
+```
+
 You are now ready to create and populate the TPC-H database and the tables:
 ```bash
 ./tpch_prepare

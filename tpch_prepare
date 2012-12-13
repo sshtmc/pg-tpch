@@ -63,7 +63,7 @@ fi
 #
 # Start a new instance of Postgres
 #
-pgtune -i $PGDATADIR/postgresql.conf -o $PGDATADIR/postgresql.conf
+pgtune -T DW -i $PGDATADIR/postgresql.conf -o $PGDATADIR/postgresql.conf
 postgres -D "$PGDATADIR" -p $PGPORT &
 PGPID=$!
 while ! pg_ctl status -D $PGDATADIR | grep "server is running" -q; do
