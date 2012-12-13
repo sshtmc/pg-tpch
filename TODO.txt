@@ -1,0 +1,2 @@
+-integrate check answers (inside of /dbgen)
+-there are alternative versions of some benchmarks (also in dbgen)
