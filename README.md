@@ -12,6 +12,11 @@ Install all dependencies of Postgres
 sudo apt-get build-dep postgresql
 ```
 
+Install the dependencies of the scripts
+```bash
+sudo apt-get install graphviz libreadline5-dev zlib1g-dev
+```
+
 Download, build, and install a custom version of Postgres
 ```bash
 wget http://ftp.postgresql.org/pub/source/v9.2.1/postgresql-9.2.1.tar.bz2
@@ -27,8 +32,7 @@ Add Postgres to the path. I assume you are using bash (the default)
 echo -e "\nexport PATH=\$HOME/pg92/bin:\$PATH" >>~/.bashrc
 ```
 
-Logout and login, or run the following in the new terminals until you restart
-your session
+Now logout and login. If you don't want to logout at this time, you should run run the following command in all new terminals, until you do logout and login again
 ```bash
 export PATH=$HOME/pg92/bin:$PATH
 ```

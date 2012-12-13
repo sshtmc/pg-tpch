@@ -55,6 +55,9 @@ fi
 if ! [ -d "$PGDATADIR" ]; then
   mkdir -p "$PGDATADIR"
   initdb -D "$PGDATADIR"
+  CREATE_NEW_DB=true
+else
+  CREATE_NEW_DB=false
 fi
 
 #
@@ -66,6 +69,10 @@ while ! pg_ctl status -D $PGDATADIR | grep "server is running" -q; do
   echo "Waiting for the Postgres server to start"
   sleep 1
 done
+
+if $CREATE_NEW_DB; then
+  createdb -p $PGPORT $DB_NAME --encoding=UTF-8 --lc-ctype=en_US.UTF-8 --lc-collate=en_US.UTF-8
+fi
 
 WAL_LEVEL_MINIMAL=`psql -p $PGPORT -c 'show wal_level' -t | grep minimal | wc -l`
 DEBUG_ASSERTIONS=`psql -p $PGPORT -c 'show debug_assertions' -t | grep on | wc -l`
