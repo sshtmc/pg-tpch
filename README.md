@@ -14,7 +14,7 @@ sudo apt-get build-dep postgresql
 
 Install the dependencies of the scripts
 ```bash
-sudo apt-get install graphviz libreadline5-dev zlib1g-dev
+sudo apt-get install graphviz libreadline5-dev zlib1g-dev pgtune
 ```
 
 Download, build, and install a custom version of Postgres
