@@ -71,7 +71,7 @@ while ! pg_ctl status -D $PGDATADIR | grep "server is running" -q; do
 done
 
 if $CREATE_NEW_DB; then
-  createdb -p $PGPORT $DB_NAME --encoding=UTF-8 --lc-ctype=en_US.UTF-8 --lc-collate=en_US.UTF-8
+  createdb -p $PGPORT $USER --encoding=UTF-8 --lc-ctype=en_US.UTF-8 --lc-collate=en_US.UTF-8
 fi
 
 WAL_LEVEL_MINIMAL=`psql -p $PGPORT -c 'show wal_level' -t | grep minimal | wc -l`
